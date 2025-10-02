@@ -10,8 +10,8 @@ class GeminiAIClientWithAutoTools:
     automatic function calling feature.
     """
     def __init__(self):
-        if not settings.GOOGLE_API_KEY:
-            raise ValueError("Missing Google GenAI configuration. Required: GOOGLE_API_KEY")
+        if not settings.GEMINI_API_KEY:
+            raise ValueError("Missing Google GenAI configuration. Required: GEMINI_API_KEY")
 
         self.client = genai.Client()
         self.model_name = settings.GEMINI_MODEL_NAME

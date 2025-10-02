@@ -1,25 +1,37 @@
-
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Union 
+from typing import List, Dict, Any
 
-class QueryRequest(BaseModel):
-    query: str 
-    user_id: Optional[str] = None
-    session_id: Optional[str] = None 
+# The ToolDefinition class now lives here, breaking the circular import.
+class ToolDefinition:
+    """
+    Definition of a tool available to the autonomous agent
+    """
+    def __init__(self, name: str, description: str, parameters: Dict[str, Any] = None, function=None):
+        self.name = name 
+        self.description = description 
+        self.parameters = parameters or {}
+        self.function = function 
 
-class WorkflowSelection(BaseModel):
-    selected_workflow: str 
-    reasoning: str 
-    required_agents: List[str]
-    personas: Dict[str, Dict[str, Any]]
+    def dict(self) -> Dict[str, Any]:
+        """Convert to dictionary format for use in prompts"""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters
+        }
 
 class AgentResponse(BaseModel):
     agent_role: str
-    content: str 
-    metadata: Optional[Dict[str, Any]] = None 
+    content: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class WorkflowSelection(BaseModel):
+    personas: Dict[str, Any]
+
+class WorkflowRequest(BaseModel):
+    user_query: str
 
 class WorkflowResponse(BaseModel):
-    final_response: str 
-    workflow_info: WorkflowSelection 
-    intermediate_steps: List[AgentResponse]
-    processing_time: float 
+    workflow_type: str
+    response: str
+    intermediate_steps: List[AgentResponse] = []

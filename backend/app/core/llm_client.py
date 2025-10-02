@@ -2,7 +2,7 @@
 from typing import Dict, Any, List, Optional
 import logging
 from google import genai
-from google.genai import types
+from google.genai import types as genai_types
 from app.config import settings
 
 class GeminiAIClient:
@@ -21,12 +21,12 @@ class GeminiAIClient:
         Initializes and configures the Gemini client.
         
         Raises:
-            ValueError: If the GOOGLE_API_KEY is not configured.
+            ValueError: If the GEMINI_API_KEY is not configured.
         """
-        if not settings.GOOGLE_API_KEY:
-            raise ValueError("Missing Google GenAI configuration. Required: GOOGLE_API_KEY")
+        if not settings.GEMINI_API_KEY:
+            raise ValueError("Missing Google GenAI configuration. Required: GEMINI_API_KEY")
         
-        # The client automatically picks up the GOOGLE_API_KEY from the environment.
+        # The client automatically picks up the GEMINI_API_KEY from the environment.
         self.client = genai.Client()
         self.model_name = settings.GEMINI_MODEL_NAME
         logging.info(f"GeminiAIClient initialized with model: {self.model_name}")
@@ -48,7 +48,7 @@ class GeminiAIClient:
         Returns:
             str: The generated text content from the API.
         """
-        config = types.GenerateContentConfig(
+        config = genai_types.GenerateContentConfig(
             max_output_tokens=max_tokens,
             temperature=temperature
         )
@@ -59,6 +59,10 @@ class GeminiAIClient:
                 contents=prompt,
                 config=config
             )
+            if not response.candidates or not response.candidates[0].content:
+                logging.warning(f"Gemini text response was empty or blocked. Feedback: {response.prompt_feedback}")
+                return "Model response was blocked or empty."
+
             return response.text
         except Exception as e:
             logging.error(f"Error calling Gemini API for text generation: {e}")
@@ -69,7 +73,7 @@ class GeminiAIClient:
         prompt: str,
         function_declarations: List[Dict[str, Any]],
         temperature: float = 0.7,
-        tool_config: Optional[types.ToolConfig] = None
+        tool_config: Optional[genai_types.ToolConfig] = None
     ) -> Dict[str, Any]:
         """
         Generate a response from Gemini, potentially requesting a tool call.
@@ -85,10 +89,10 @@ class GeminiAIClient:
         """
         try:
             # 1. Wrap the function declarations in the required Tool object
-            tools = types.Tool(function_declarations=function_declarations)
+            tools = genai_types.Tool(function_declarations=function_declarations)
             
             # 2. Create the generation config with the tools
-            config = types.GenerateContentConfig(
+            config = genai_types.GenerateContentConfig(
                 tools=[tools],
                 temperature=temperature,
                 tool_config=tool_config
@@ -100,6 +104,13 @@ class GeminiAIClient:
                 contents=prompt,
                 config=config,
             )
+
+            if not response.candidates or not response.candidates[0].content:
+                logging.warning(f"Gemini text response was empty or blocked. Feedback: {response.prompt_feedback}")
+                return {
+                    "type": "text",
+                    "content": "Model response was blocked or empty.  Please check the logs for safety feedback."
+                }
             
             # 4. Check the response for a function call
             response_part = response.candidates[0].content.parts[0]
@@ -114,15 +125,16 @@ class GeminiAIClient:
                     "name": function_call.name,
                     "arguments": arguments,
                 }
-            
-            # Handle regular text response
-            logging.info("Gemini returned a text response.")
+
+            full_text = "".join(part.text for part in response.candidates[0].content.parts if part.text)
             return {
                 "type": "text",
-                "content": response.text,
+                "content": full_text or "No text response returned from Gemini."
             }
+
         except Exception as e:
-            logging.error(f"Error calling Gemini API with tools: {e}")
+            # This outer exception will now only catch unexpected errors
+            logging.error(f"Unexpected error calling Gemini API with tools: {e}")
             raise
 
 # Singleton instance for the Gemini client

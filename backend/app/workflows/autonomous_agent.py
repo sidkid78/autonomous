@@ -1,53 +1,31 @@
 """
 Autonomous Agent Workflow Module
 
-This module implements an autonomous agent workflow that can plan, act, and reflect
-on its actions in a loop until a task is complete. The agent operates through
-multiple phases (planning, acting, reflecting) and can use tools to accomplish tasks.
+This module implements a multi-agent autonomous workflow system that uses planning,
+action, and reflection phases to accomplish complex tasks. The agent operates in
+an iterative loop, breaking down tasks into manageable steps and executing them
+using available tools.
+
+The workflow consists of three main phases:
+1. Planning: Creates a detailed plan for accomplishing the task
+2. Acting: Executes actions or uses tools to work toward task completion
+3. Reflection: Evaluates progress and determines next steps
+
+The agent maintains memory across iterations and can adapt its approach based on
+observations and reflections from previous steps.
 """
 
-from models.schemas import WorkflowSelection, AgentResponse 
-from core.llm_client import get_llm_client
+# Correctly import everything from the single schemas file
+from app.models.schemas import WorkflowSelection, AgentResponse, ToolDefinition 
+from app.core.llm_client import get_llm_client
 from google.genai import types as genai_types
-from typing import Tuple, List, Dict, Any, Optional 
+from typing import Tuple, List, Dict, Any 
 import logging 
 import json 
 import asyncio 
 
+# The ToolDefinition class has been removed from this file
 
-
-class ToolDefinition:
-    """
-    Definition of a tool available to the autonomous agent.
-    
-    A tool represents a capability that the agent can invoke during execution,
-    such as searching, calculating, or interacting with external systems.
-    
-    Attributes:
-        name (str): The unique name of the tool
-        description (str): A description of what the tool does
-        parameters (Dict[str, Any]): Schema defining the tool's parameters
-        function (callable): The actual function to execute when the tool is called
-    """
-    def __init__(self, name: str, description: str, parameters: Dict[str, Any] = None, function=None):
-        self.name = name 
-        self.description = description 
-        self.parameters = parameters or {}
-        self.function = function 
-
-    def dict(self) -> Dict[str, Any]:
-        """
-        Convert the tool definition to dictionary format.
-        
-        Returns:
-            Dict[str, Any]: Dictionary representation suitable for use in prompts
-        """
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": self.parameters
-        }
-    
 async def execute(
     workflow_selection: WorkflowSelection, 
     user_query: str,
@@ -55,44 +33,42 @@ async def execute(
     available_tools: List[ToolDefinition] = None
 ) -> Tuple[str, List[AgentResponse]]:
     """
-    Execute an autonomous agent workflow with planning, acting, and reflection phases.
+    Execute the autonomous agent workflow to accomplish a user's task.
     
-    This workflow gives the agent significant autonomy to:
-    1. Plan its approach to solving the task
-    2. Take actions through tools to gather information or make changes
-    3. Reflect on progress and decide next steps
-    4. Loop until the task is determined to be complete
+    This function implements a multi-phase iterative approach where the agent:
+    1. Plans how to accomplish the task
+    2. Takes actions (using tools or reasoning)
+    3. Reflects on progress and decides next steps
     
-    The agent maintains memory across iterations and can adapt its strategy based
-    on observations and reflections from previous steps.
+    The process continues until the task is complete or max_iterations is reached.
     
     Args:
-        workflow_selection (WorkflowSelection): The workflow selection object containing
-            persona configurations for different agent roles (planner, actor, reflector)
-        user_query (str): The user's request or task to accomplish
-        max_iterations (int, optional): Maximum number of plan-act-reflect cycles to
-            execute before stopping. Defaults to 10.
-        available_tools (List[ToolDefinition], optional): List of tools the agent can
-            use during execution. Defaults to None (empty list).
-        
+        workflow_selection (WorkflowSelection): Configuration containing agent personas
+            and workflow settings
+        user_query (str): The user's task or question to be accomplished
+        max_iterations (int, optional): Maximum number of planning-action-reflection
+            cycles to perform. Defaults to 10.
+        available_tools (List[ToolDefinition], optional): List of tools the agent
+            can use during execution. Defaults to None (empty list).
+    
     Returns:
         Tuple[str, List[AgentResponse]]: A tuple containing:
-            - str: The final response addressing the user's query
-            - List[AgentResponse]: A list of intermediate steps showing the agent's
-              reasoning and actions throughout execution
-              
+            - str: The final response or summary of task completion
+            - List[AgentResponse]: List of intermediate steps showing the agent's
+              reasoning, actions, and observations throughout execution
+    
     Raises:
-        Exception: May raise exceptions from LLM client or tool execution, which are
-            caught and logged internally
+        Exception: May raise exceptions from LLM client or tool execution, which
+            are caught and handled internally with fallback behavior
     """
+    
+    # ... the rest of your execute function remains exactly the same
     client = get_llm_client()
     personas = workflow_selection.personas.get("autonomous_agent", {})
     intermediate_steps = []
     
-    # Use default tools if none provided
     available_tools = available_tools or []
     
-    # Initialize memory for the agent to store information between iterations
     agent_memory = {
         "task": user_query,
         "tools": [tool.dict() for tool in available_tools],
@@ -101,7 +77,6 @@ async def execute(
         "task_complete": False
     }
     
-    # Define planning function
     planning_function = {
         "name": "create_task_plan",
         "description": "Creates a plan for how to accomplish the given task",
@@ -146,7 +121,6 @@ async def execute(
         }
     }
     
-    # Define action function
     action_function = {
         "name": "execute_action",
         "description": "Executes an action or tool to work toward task completion",
@@ -179,7 +153,6 @@ async def execute(
         }
     }
     
-    # Define reflection function
     reflection_function = {
         "name": "reflect_on_progress",
         "description": "Evaluates progress toward task completion and decides next steps",
@@ -214,9 +187,9 @@ async def execute(
         }
     }
     
-    # Main loop for the autonomous agent
     iteration = 0
     final_response = "Task processed, but no specific result was generated."
+    
     while iteration < max_iterations and not agent_memory["task_complete"]:
         iteration += 1
         logging.info(f"Starting iteration {iteration} of autonomous agent")
@@ -224,7 +197,6 @@ async def execute(
         # Step 1: Planning Phase
         planner_agent = personas.get("planner_agent", {})
         
-        # Prepare the history context
         history_context = ""
         if agent_memory["iterations"]:
             history_context = "Previous iterations:\n" + "\n".join([
@@ -236,7 +208,6 @@ async def execute(
                 for i, memory in enumerate(agent_memory["iterations"])
             ])
         
-        # Create the planning prompt
         planning_prompt = f"""
         {generate_agent_context(planner_agent)}
         
@@ -256,7 +227,6 @@ async def execute(
         """
         
         try:
-            # Get planning response using function calling
             planning_tool_config = genai_types.ToolConfig(
                 function_calling_config=genai_types.FunctionCallingConfig(
                     mode='ANY',
@@ -273,19 +243,18 @@ async def execute(
             if planning_response.get("type") == "tool_call" and planning_response.get("name") == "create_task_plan":
                 plan = planning_response["arguments"]
             else:
-                # Fallback if no function call was returned
-                logging.warning("Planning function call not returned, using fallback")
+                logging.warning("Planning function call not returned, using fallback.")
                 plan = { "task_understanding": "Fallback plan", "plan_steps": [], "expected_outcome": "Best effort." }
-            
+
         except Exception as e:
-            logging.error(f"Error in planning phase: {str(e)}")
+            logging.error(f"Error in planning phase: {e}")
             plan = { "task_understanding": f"Error: {e}", "plan_steps": [], "expected_outcome": "Error occurred." }
-        
+            
         current_iteration = {"plan": plan}
         agent_memory["iterations"].append(current_iteration)
-        intermediate_steps.append(AgentResponse(agent_role="Task Planner", content=f"Plan created: {plan['task_understanding']}", metadata=plan))
+        intermediate_steps.append(AgentResponse(agent_role="Task Planner", content=f"Plan created: {plan.get('task_understanding', 'N/A')}", metadata=plan))
         
-        # === Step 2: Acting Phase ===
+        # Step 2: Acting Phase
         actor_agent = personas.get("actor_agent", {})
         actor_prompt = f"""
         {generate_agent_context(actor_agent)}
@@ -306,6 +275,7 @@ async def execute(
         
         Think step-by-step and take the most appropriate action to move closer to completing the task.
         """
+        
         try:
             action_tool_config = genai_types.ToolConfig(
                 function_calling_config=genai_types.FunctionCallingConfig(
@@ -313,35 +283,34 @@ async def execute(
                     allowed_function_names=["execute_action"]
                 )
             )
-
+            
             action_response = await client.generate_with_tools_async(
                 prompt=actor_prompt,
                 function_declarations=[action_function],
                 temperature=0.5,
                 tool_config=action_tool_config
             )
-
+            
             if action_response.get("type") == "tool_call" and action_response.get("name") == "execute_action":
                 action = action_response["arguments"]
             else:
                 logging.warning("Action function call not returned, using fallback.")
                 action = {"action_type": "reasoning", "reasoning": "Unable to determine next action."}
+
         except Exception as e:
             logging.error(f"Error in action phase: {e}")
             action = {"action_type": "reasoning", "reasoning": f"Error occurred: {e}"}
-
+        
         observation = "No observation recorded."
         
-        if action["action_type"] == "use_tool":
+        if action.get("action_type") == "use_tool":
             tool_name = action.get("tool_name", "")
             tool_parameters = action.get("tool_parameters", {})
             
-            # Try to find and execute the tool
             tool_found = False
             for tool in available_tools:
                 if tool.name == tool_name and tool.function:
                     try:
-                        # Execute the tool
                         observation = await tool.function(**tool_parameters)
                         tool_found = True
                     except Exception as e:
@@ -351,22 +320,20 @@ async def execute(
                     
             if not tool_found:
                 observation = f"Tool '{tool_name}' not found or not executable."
-        elif action["action_type"] == "reasoning":
+        elif action.get("action_type") == "reasoning":
             observation = f"Reasoning: {action.get('reasoning', 'No reasoning provided.')}"
-        elif action["action_type"] in ["intermediate_result", "final_result"]:
+        elif action.get("action_type") in ["intermediate_result", "final_result"]:
             observation = f"Result: {action.get('result', 'No result provided.')}"
             
-            # If this is a final result, we'll consider the task complete
             if action["action_type"] == "final_result":
-                final_response = action.get("result", "Task completed.")
                 agent_memory["task_complete"] = True
+                final_response = action.get("result", "Task completed successfully.")
+
         
-        # Store the action and observation in memory
         current_iteration["action"] = action
         current_iteration["observation"] = observation
         agent_memory["observations"].append(observation)
         
-        # Record the action step
         intermediate_steps.append(AgentResponse(
             agent_role="Action Executor",
             content=format_action_content(action, observation),
@@ -375,14 +342,12 @@ async def execute(
                 "observation": observation
             }
         ))
-
+        
         if agent_memory["task_complete"]:
             break
             
-        # === Step 3: Reflection Phase ===
+        # Step 3: Reflection Phase
         reflector_agent = personas.get("reflector_agent", {})
-        
-        # Prepare the reflection prompt
         reflection_prompt = f"""
         {generate_agent_context(reflector_agent)}
         
@@ -406,13 +371,13 @@ async def execute(
         """
         
         try:
-            # Get reflection response using function calling
             reflection_tool_config = genai_types.ToolConfig(
                 function_calling_config=genai_types.FunctionCallingConfig(
                     mode='ANY',
                     allowed_function_names=["reflect_on_progress"]
                 )
             )
+            
             reflection_response = await client.generate_with_tools_async(
                 prompt=reflection_prompt,
                 function_declarations=[reflection_function],
@@ -429,18 +394,24 @@ async def execute(
         except Exception as e:
             logging.error(f"Error in reflection phase: {e}")
             reflection = {"progress_assessment": f"Error occurred: {e}", "task_complete": False}
-
-            agent_memory["task_complete"] = reflection.get("task_complete", False)
-            current_iteration["reflection"] = reflection 
-            intermediate_steps.append(AgentResponse(agent_role="Progress Reflector", content=f"Assessment: {reflection['progress_assessment']}", metadata=reflection))
-
-            if agent_memory["task_complete"]:
-                logging.info(f"Task marked as completed after {iteration} iterations")
-                break
+        
+        agent_memory["task_complete"] = reflection.get("task_complete", False)
+        
+        current_iteration["reflection"] = reflection
+        
+        intermediate_steps.append(AgentResponse(
+            agent_role="Progress Reflector",
+            content=f"Progress Assessment:\n{reflection.get('progress_assessment', 'N/A')}",
+            metadata=reflection
+        ))
+        
+        if agent_memory["task_complete"]:
+            logging.info(f"Task marked as complete after {iteration} iterations")
+            break
     
-    # Generate final response
     if not agent_memory["task_complete"]:
-        logging.warning(f"Maximum iterations ({max_iterations}) reached.")
+        logging.warning(f"Maximum iterations ({max_iterations}) reached without task completion")
+        
         summary_prompt = f"""
         TASK: {user_query}
         
@@ -450,13 +421,13 @@ async def execute(
         Based on the above execution history, please provide a comprehensive summary
         of the findings and results to address the user's original request.
         """
+        
         try:
             final_response = await client.generate_text_async(summary_prompt, temperature=0.7)
         except Exception as e:
-            logging.error(f"Error generating summary response: {e}")
-            final_response += f" Error generating summary: {e}"
-            
-    # Add a final summary step
+            logging.error(f"Error generating summary response: {str(e)}")
+            final_response += f" Error generating summary: {str(e)}"
+    
     intermediate_steps.append(AgentResponse(
         agent_role="Task Summarizer",
         content=f"Summary of execution:\n" +
@@ -471,6 +442,7 @@ async def execute(
     ))
     
     return final_response, intermediate_steps
+
 
 def format_action_content(action, observation):
     """

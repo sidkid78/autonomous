@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     
     # API settings
     API_KEY: str = ""
-    ALLOWED_ORIGINS: str = "*"
+    ALLOWED_ORIGINS: str = "http://localhost:3000, http://localhost:3001"
     
     # MCP settings
     MCP_ENABLED: bool = True
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     OPENWEATHERMAP_API_KEY: str = ""
 
     # Google GenAI settings
-    GOOGLE_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
     
     # Embedding model
     EMBEDDING_MODEL: str 
